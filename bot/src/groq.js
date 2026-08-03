@@ -92,14 +92,30 @@ function escapeIlike(q) {
     .replace(/\)/g, "\\)");
 }
 
+/**
+ * Monta um padrão ILIKE por palavra em vez de bloco exato — assim
+ * "homem aranha" acha "Homem-Aranha: Sem Volta Para Casa" mesmo com hífen,
+ * dois pontos ou subtítulo no meio, que uma busca por substring inteira
+ * (%homem aranha%) não acharia.
+ */
+function fuzzyPattern(q) {
+  const words = String(q || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(escapeIlike);
+  if (!words.length) return "%";
+  return "%" + words.join("%") + "%";
+}
+
 async function execTool(supabase, userId, name, args, ctx) {
   switch (name) {
     case "search_catalog": {
-      const q = escapeIlike(String(args.query || ""));
+      const q = fuzzyPattern(args.query);
       const { data } = await supabase
         .from("movies")
         .select("id, title, type, release_year")
-        .ilike("title", `%${q}%`)
+        .ilike("title", q)
         .limit(5);
       if (!data?.length) return { found: false };
       return {
@@ -141,11 +157,11 @@ async function execTool(supabase, userId, name, args, ctx) {
 
     case "add_favorite": {
       if (!userId) return { error: "Usuário não está logado." };
-      const q = escapeIlike(String(args.movie_title || ""));
+      const q = fuzzyPattern(args.movie_title);
       const { data: movie } = await supabase
         .from("movies")
         .select("id, title")
-        .ilike("title", `%${q}%`)
+        .ilike("title", q)
         .limit(1)
         .maybeSingle();
       if (!movie) return { error: "Não achei esse título no catálogo." };
@@ -157,11 +173,11 @@ async function execTool(supabase, userId, name, args, ctx) {
 
     case "rate_movie": {
       if (!userId) return { error: "Usuário não está logado." };
-      const q = escapeIlike(String(args.movie_title || ""));
+      const q = fuzzyPattern(args.movie_title);
       const { data: movie } = await supabase
         .from("movies")
         .select("id, title")
-        .ilike("title", `%${q}%`)
+        .ilike("title", q)
         .limit(1)
         .maybeSingle();
       if (!movie) return { error: "Não achei esse título no catálogo." };
