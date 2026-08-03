@@ -7,11 +7,14 @@ function generateCode() {
 
 /** Retorna o user_id vinculado a esse número, ou null se ainda não vinculou. */
 async function getLinkedUserId(supabase, phone) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("whatsapp_links")
     .select("user_id")
     .eq("phone", phone)
     .maybeSingle();
+  if (error) {
+    console.error("Falha ao consultar whatsapp_links:", error);
+  }
   return data?.user_id ?? null;
 }
 
@@ -19,7 +22,10 @@ async function getLinkedUserId(supabase, phone) {
 async function generateOtpForPhone(supabase, phone) {
   const code = generateCode();
   const expires_at = new Date(Date.now() + OTP_TTL_MS).toISOString();
-  await supabase.from("whatsapp_otp").upsert({ phone, code, expires_at });
+  const { error } = await supabase.from("whatsapp_otp").upsert({ phone, code, expires_at });
+  if (error) {
+    console.error("Falha ao gravar OTP no Supabase:", error);
+  }
   return code;
 }
 
@@ -34,7 +40,10 @@ async function loadHistory(supabase, phone) {
 }
 
 async function saveMessage(supabase, phone, role, content) {
-  await supabase.from("whatsapp_messages").insert({ phone, role, content });
+  const { error } = await supabase.from("whatsapp_messages").insert({ phone, role, content });
+  if (error) {
+    console.error("Falha ao gravar mensagem no Supabase:", error);
+  }
 }
 
 module.exports = { getLinkedUserId, generateOtpForPhone, loadHistory, saveMessage };
