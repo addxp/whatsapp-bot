@@ -1,4 +1,6 @@
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+// gpt-oss é mais confiável chamando ferramentas do que o llama-3.3-70b, que
+// às vezes gera a chamada num formato que a Groq rejeita (tool_use_failed).
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const TOOLS = [
   {
@@ -214,7 +216,7 @@ Sempre use as ferramentas pra buscar, recomendar, favoritar, avaliar ou vincular
   const ctx = { siteUrl, generateOtp };
 
   for (let step = 0; step < 4; step++) {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    let res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -227,8 +229,31 @@ Sempre use as ferramentas pra buscar, recomendar, favoritar, avaliar ou vincular
     });
 
     if (!res.ok) {
-      console.error("Groq falhou:", await res.text());
-      return "Deu um erro aqui pra pensar na resposta, tenta de novo em instantes 🙏";
+      const errText = await res.text();
+      // A Groq às vezes falha em gerar uma chamada de ferramenta válida.
+      // Como o próprio suporte da Groq recomenda: tenta de novo com
+      // temperatura mais baixa antes de desistir de vez.
+      if (errText.includes("tool_use_failed")) {
+        console.warn("Groq tool_use_failed, tentando de novo com temperatura mais baixa...");
+        res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages,
+            tools: TOOLS,
+            tool_choice: "auto",
+            temperature: 0.1,
+          }),
+        });
+        if (!res.ok) {
+          console.error("Groq falhou de novo:", await res.text());
+          return "Deu um erro aqui pra pensar na resposta, tenta de novo em instantes 🙏";
+        }
+      } else {
+        console.error("Groq falhou:", errText);
+        return "Deu um erro aqui pra pensar na resposta, tenta de novo em instantes 🙏";
+      }
     }
 
     const data = await res.json();
